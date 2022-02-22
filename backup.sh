@@ -14,4 +14,5 @@ tar -zcf dal1.tar.gz $dal1
 tar -zcf dal2.tar.gz $dal2
 tar -zcf fb.tar.gz $fb
 
-
+git add -A
+git commit -m 'backup_'$(date +%F_%H:%M)
