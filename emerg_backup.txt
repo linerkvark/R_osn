@@ -1,0 +1,150 @@
+ВСЕ КОМАНДЫ ОТ ПОЛЬЗОВАТЕЛЯ root из домашней лиректории пользователя root
+
+#Main radius VM
+
+- Подключаем github
+	ssh-keygen
+	cat /root/.ssh/id_rsa.pub
+	mkdir dir1
+	cd dir1
+	git config --global user.name name
+	git config --global user.email email
+	git init
+	git remote add origin git@github.com:linerkvark/R_osn.git
+	git pull origin main
+	git branch -m main
+	
+	cd
+	mkdir dir2
+	cd dir2
+	git init
+	git remote add origin git@github.com:linerkvark/R_sec_mysql.git
+	git pull origin main
+	git branch -m main
+	
+	
+- Устанавливаем программы
+	wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+	echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
+	sudo apt update
+	sudo apt install -y unzip nginx apache2 software-properties-common mariadb-server mariadb-client php libapache2-mod-php php-mysql php-gd php-pear php-db freeradius freeradius-mysql filebeat
+	
+- mariadb
+	mysql_secure_installation
+	nano /etc/mysql/mariadb.conf.d/50-server.cnf
+		bind-address           = 192.168.88.50 - меняем, остальное добавляем.
+		server-id              = 1
+		log_bin                = /var/log/mysql/mysql-bin.log
+		
+	mysql -u root -p
+		CREATE USER radrepl@'%' IDENTIFIED BY 'radReplpa$$';
+		GRANT REPLICATION SLAVE ON *.* TO radrepl@'%';
+		FLUSH PRIVILEGES;
+		quit;
+	systemctl restart mariadb.service
+	mysql -u root -p
+		SHOW MASTER STATUS;
+		quit;
+	
+#Secondary radius VM
+
+- github
+	ssh-keygen
+	cat /root/.ssh/id_rsa.pub
+	git config --global user.name name
+	git config --global user.email email
+	mkdir dir1
+	cd dir1
+	git init
+	git remote add origin git@github.com:linerkvark/R_sec_mysql.git
+	git pull origin main
+	git branch -m main
+	
+	
+	
+- Устанавливаем программы
+	apt update
+	apt install -y mariadb-server mariadb-client
+	
+- mariadb
+	mysql_secure_installation	
+	nano /etc/mysql/mariadb.conf.d/50-server.cnf
+		bind-address            = 192.168.88.51 - меняем, остальное длбавляем
+		server-id              = 2
+		log_bin                = /var/log/mysql/mysql-bin.log
+	systemctl restart mariadb.service	
+	mysql -u root -p
+		STOP SLAVE;
+		CHANGE MASTER TO MASTER_HOST='192.168.88.50', MASTER_USER='radrepl', MASTER_PASSWORD='radReplpa$$', MASTER_LOG_FILE='mysql-bin.000001', MASTER_LOG_POS=328;
+		START SLAVE;
+		show slave status\G - не обязательно
+		quit;
+		
+#Main radius VM
+	
+	sudo mysql -u root -p
+		CREATE DATABASE radius;
+		GRANT ALL ON radius.* TO radius@localhost IDENTIFIED BY "R@diuspass";
+		FLUSH PRIVILEGES;
+		quit;
+		
+	Создаем файл с паролем root  для mysql - nano /root/sqlpass
+	cd /root/dir1
+	cp -r /root/dir2/radius_2022-02-22_21\:14/ /root/dir1/radius - копируем бэкап базы c последней датой 
+	bash em_upload.sh "имя папки в которую копировали бэкап базы"
+	systemctl restart apache2.service nginx.service freeradius.service filebeat.service
+	
+Работоспособность восстановлена
+
+Мониторинг
+
+	cd /root/dir1/node_exporter
+	./ne_setup.sh
+	
+	
+
+#Secondary radius VM
+
+	cd /root/dir1/prometheus/
+	./promsetup.sh
+	cd ..
+	tar -zxvf prom.tar.gz
+	cp -r ./etc/prometheus /etc/
+	systemctl restart prometheus.service
+	cd /root/dir1/node_exporter
+	./ne_setup.sh
+	
+	apt install -y adduser libfontconfig1
+	wget https://dl.grafana.com/enterprise/release/grafana-enterprise_8.4.1_amd64.deb
+	dpkg -i grafana-enterprise_8.4.1_amd64.deb
+	systemctl daemon-reload && systemctl start grafana-server && systemctl enable grafana-server.service
+	
+Логирование	
+	
+	apt install -y openjdk-11-jdk
+	wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | apt-key add -
+	echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | tee -a /etc/apt/sources.list.d/elastic-7.x.list
+	apt update
+	apt install elasticsearch
+	systemctl start elasticsearch
+	systemctl enable elasticsearch
+	apt install kibana
+	systemctl enable kibana
+	systemctl start kibana
+	tar -zxvf kib.tar.gz
+	cp -r ./etc/kibana /etc/
+	systemctl restart elasticsearch.service kibana.service
+	
+	sudo apt install logstash
+	tar -zxvf logst.tar.gz
+	cp -r ./etc/logstash /etc/
+	systemctl restart logstash.service
+	
+	
+# Kibana - Index Patterns - Create Index pattern
+# Name weblogs*, Timestamp field - @timestamp
+
+
+
+
+	
